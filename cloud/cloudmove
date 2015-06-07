@@ -1,0 +1,30 @@
+#!/usr/bin/php -q
+<?php
+// include the API
+require('cloudfiles/cloudfiles.php');
+
+// set $username and $key
+require('/root/.rackspace_cloud');
+
+// Connect to Rackspace
+$auth = new CF_Authentication($username, $key);
+$auth->authenticate();
+$conn = new CF_Connection($auth, $servicenet=True);
+
+// Get the container we want to use
+$container = $conn->get_container('ctcbackups');
+
+// store file information
+$localfile = $argv[1];
+$filename = basename($argv[1]);
+
+// upload file to Rackspace
+$object = $container->create_object($filename);
+$object->content_type = 'application/octet-stream';
+$object->load_from_filename($localfile);
+
+if(!unlink($localfile)) {
+  echo("Failed to remove local file: $localfile\n");
+  exit(-1);
+}
+?>

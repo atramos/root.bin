@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# setup password-less access between this host and another host
+# usage: <remote-host>
+
+if ! [ -f ~/.ssh/id_rsa.pub ]
+then
+        ssh-keygen -t rsa
+fi
+
+ssh root@$1 mkdir -p .ssh
+cat ~/.ssh/id_rsa.pub | ssh root@$1 'cat >> .ssh/authorized_keys'
+
+

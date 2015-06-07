@@ -1,0 +1,30 @@
+#!/usr/bin/perl
+$hostname = `hostname`;
+print <<EOF;
+<VirtualHost *:80>
+        ServerAdmin webmaster\@$hostname
+        DocumentRoot /var/www
+        ServerName $hostname
+
+        <Location />
+                AuthType Basic
+                AuthName "HTTP Auth required"
+                AuthBasicProvider file
+                AuthUserFile /etc/htpasswd
+                Require valid-user
+        </Location>
+
+        <Directory /var/www/>
+                Options +Indexes +FollowSymLinks -MultiViews +ExecCGI
+                AllowOverride None
+                Order allow,deny
+                Allow from all
+        </Directory>
+
+        LogLevel notice
+        ErrorLog /var/log/apache2/error.log
+        CustomLog /var/log/apache2/access.log combined
+
+</VirtualHost>
+
+EOF

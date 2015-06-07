@@ -1,0 +1,23 @@
+#!/bin/sh
+
+PATH=/usr/local/bin:$PATH
+
+DUMP=/tmp/db-dump
+umask 0
+rm -rf $DUMP && mkdir $DUMP
+
+for db in `mysql --skip-column-names -Be 'show databases' | grep -v _schema`
+do
+  DBDIR=$DUMP/$db
+  mkdir $DBDIR
+  mysqldump -d --skip-triggers $db > $DBDIR/$db.schema_notriggers_nosp.ddl
+  mysqldump -R -d $db > $DBDIR/$db.schema_full.ddl
+
+  #mysqldump -T $DBDIR $db > $DBDIR/_triggers.ddl
+  mysqldump -R $db > $DUMP/$db.sql
+done
+
+mv -f db-dump.tar.lrz old-db-dump.tar.lrz
+tar --remove-files -cf $PWD/db-dump.tar -C `dirname $DUMP` `basename $DUMP`
+lrzip db-dump.tar
+

@@ -1,0 +1,34 @@
+#!/bin/sh
+
+apt-get update
+apt-get upgrade
+
+PASS=`./generate-password`
+echo "HTTP Password: $PASS"
+
+# barebones apache server
+apt-get install -y apache2
+htpasswd -bc /etc/htpasswd admin $PASS
+./make-000-default > /etc/apache2/sites-enabled/000-default
+/etc/init.d/apache2 restart
+
+# php5 php5-cli libapache2-mod-php5 php5-mcrypt libaio1
+# DO NOT apt-get install mysql-server mysql-client phpmyadmin php5-mysql
+# mysql-common breaks mysql5.6
+# mailutils depends on mysql-common
+
+# curl --remote-name http://www.duinsoft.nl/pkg/pool/all/update-sun-jre.bin
+ (cd /usr/local &&
+	tar -xf /root/setup/jdk-*-linux-x64.tar.gz &&
+	ln -s jdk* java)
+
+echo 'PATH=/usr/local/java/bin:$PATH' > /etc/profile.d/java.sh
+
+echo America/Chicago > /etc/timezone
+dpkg-reconfigure -u tzdata
+
+apt-get -y install postfix
+apt-get -y install lrzip
+
+echo now visit: http://www.howtoforge.com/how-to-install-mysql-5.6-on-ubuntu-12.10-including-memcached-plugin
+

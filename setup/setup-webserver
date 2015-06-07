@@ -1,0 +1,29 @@
+apt-get update
+apt-get install -y apache2 mysql-server-5.6 mysql-client-5.6
+apt-get install -y php5 php5-mysql php5-cli 
+apt-get install -y libapache2-mod-php5 php5-mcrypt phpmyadmin
+
+apt-get install -y apache2-utils
+PASS=`base64 /dev/urandom -w16 | head -1`
+htpasswd -bc /etc/htpasswd admin $PASS
+echo $PASS > ~/readme.password
+./make-000-default > /etc/apache2/sites-enabled/000-default.conf
+/etc/init.d/apache2 restart
+
+if [ ! -f /tmp/jdk-8u11-linux-x64.tar.gz ]
+then
+	(cd /tmp && wget --no-check-certificate --no-cookies --header "Cookie: oraclelicense=accept-securebackup-cookie" http://download.oracle.com/otn-pub/java/jdk/8u11-b12/jdk-8u11-linux-x64.tar.gz)
+fi
+
+(cd /usr/local &&
+	tar -xf /tmp/jdk-*-linux-x64.tar.gz &&
+	ln -s jdk* java)
+
+echo 'PATH=/usr/local/java/bin:$PATH' > /etc/profile.d/java.sh
+
+echo America/Chicago > /etc/timezone
+dpkg-reconfigure -u tzdata
+
+apt-get install postfix mailutils
+apt-get -y install lrzip
+

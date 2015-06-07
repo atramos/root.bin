@@ -1,0 +1,24 @@
+#!/bin/sh
+
+PASS=`./generate-password`
+
+stop mysql
+
+mysqld --skip-grant-tables &
+sleep 5
+
+mysql -u root <<EOF
+UPDATE mysql.user SET Password=PASSWORD('$PASS') WHERE User='root';
+FLUSH PRIVILEGES;
+EOF
+
+kill %1
+sleep 5
+
+cat > .my.cnf <<EOF
+[client]
+password = $PASS
+EOF
+
+start mysql
+

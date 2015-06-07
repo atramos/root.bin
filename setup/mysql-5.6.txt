@@ -1,0 +1,55 @@
+# http://www.vworker.com/RentACoder/misc/BidRequests/ShowBidRequest.asp?lngBidRequestId=1952582
+
+# First of all we need to create dump of all databases to a file:
+
+mysqldump --all-databases -u root -p > /folder/all-databases.sql
+
+/etc/init.d/mysql stop
+
+# You can see installed mysql packages by command:
+
+dpkg -l 'mysql-*'
+
+# Than carefully remove (this what I've done on my 12.04.1 LTS server :
+
+apt-get remove mysql-server
+apt-get remove mysql-server-5.5
+apt-get remove mysql-server-core
+apt-get remove mysql-server-core-5.5
+apt-get remove mysql-client-5.5
+apt-get remove mysql-client-core-5.5
+apt-get autoremove
+
+# But do not touch mysql-common package
+
+# Than I rebooted the machine
+
+# Downloaded the mysql source:
+
+dpkg -i mysql-5.6.6-m9-debian6.0-x86_64.deb
+
+# It going to install to folder: /opt/mysql/server-5.6/
+
+cp /opt/mysql/server-5.6/support-files/mysql.server /etc/init.d/
+
+# Edit in /etc/mysql/my.cnf (also recheck other configuration options)
+
+basedir         = /opt/mysql/server-5.6
+
+# Add path to /etc/environment like this for example:
+
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/opt/mysql/server-5.6/bin"
+
+# Next install lib
+
+apt-get install libaio-dev
+
+# Now you can start server by
+
+/etc/init.d/mysql.server start
+
+# And Upgrade existing databases
+
+mysql_upgrade -u root -p
+
+

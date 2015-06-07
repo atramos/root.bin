@@ -1,0 +1,1 @@
+# http://www.staldal.nu/tech/2011/12/09/how-to-move-mysql-data-directory-in-ubuntu-server/

@@ -1,0 +1,47 @@
+#!/usr/bin/php -q
+<?php
+// include the API
+require('cloudfiles/cloudfiles.php');
+
+// set $username and $key
+require('/root/.rackspace_cloud');
+
+// Connect to Rackspace
+$auth = new CF_Authentication($username, $key);
+$auth->authenticate();
+$conn = new CF_Connection($auth, $servicenet=True);
+
+array_shift($argv); // discard script name
+
+if(!count($argv)) {
+        $lst = $conn->list_containers();
+        foreach($lst as $obj) {
+                print "$obj\n";
+        }
+	return;
+}
+
+// Get the container we want to use
+$fromContainer = array_shift($argv);
+$container = $conn->get_container($fromContainer);
+
+if(!count($argv)) {
+	$lst = $container->list_objects();
+	foreach($lst as $obj) {
+		print "$obj\n";
+	}
+}
+
+foreach($argv as $localfile) {
+	$filename = basename($localfile);
+	print "$filename\n";
+
+	// upload file to Rackspace
+	$object = $container->get_object($filename);
+	$output = fopen($filename, "w");
+     	$object->stream($output); # stream object content to PHP's output buffer
+     	fclose($output);
+
+}
+
+?>
