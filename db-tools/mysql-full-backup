@@ -2,22 +2,24 @@
 
 PATH=/usr/local/bin:$PATH
 
-DUMP=/tmp/db-dump
+DUMP=/root/db
 umask 0
 rm -rf $DUMP && mkdir $DUMP
 
-for db in `mysql --skip-column-names -Be 'show databases' | grep -v _schema`
+for db in `mysql --skip-column-names -Be 'show databases' | grep -v _schema | grep -v mysql`
 do
+  echo "db: $db"
   DBDIR=$DUMP/$db
   mkdir $DBDIR
-  mysqldump -d --skip-triggers $db > $DBDIR/$db.schema_notriggers_nosp.ddl
+  chmod o+wx $DBDIR
+  mysqldump -d --skip-triggers $db > $DBDIR/$db.schema_NT_NR.ddl
   mysqldump -R -d $db > $DBDIR/$db.schema_full.ddl
+#  for table in `mysql $db --skip-column-names -Be 'show full tables where Table_Type <> "VIEW"' | perl -lpe 's/\t.*//'`
+#  do
+#	(mysqldump -C --skip-triggers $db $table > $DBDIR/$table.sql &&
+#	p7zip $DBDIR/$table.sql > /dev/null) &
+#  done
 
-  #mysqldump -T $DBDIR $db > $DBDIR/_triggers.ddl
-  mysqldump -R $db > $DUMP/$db.sql
+  mysqldump -R $db |gzip > $DUMP/$db.sql.gz
 done
-
-mv -f db-dump.tar.lrz old-db-dump.tar.lrz
-tar --remove-files -cf $PWD/db-dump.tar -C `dirname $DUMP` `basename $DUMP`
-lrzip db-dump.tar
 
