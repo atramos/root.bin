@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Move an existing mysql instance temporarily to RAM.
+# Reverts back to normal configuration and original data automatically when machine is rebooted.
+# Useful for testing / experimentation / continuous_integration.
+
+service mysql stop
+
+mount tmpfs /mnt -t tmpfs
+
+cp -rp /var/lib/mysql /mnt
+
+mount --bind /mnt/mysql /var/lib/mysql
+
+service mysql start

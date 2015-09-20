@@ -15,7 +15,7 @@ EOF
 kill %1
 sleep 5
 
-cat > .my.cnf <<EOF
+cat > /root/.my.cnf <<EOF
 [client]
 password = $PASS
 EOF
