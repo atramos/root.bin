@@ -33,5 +33,13 @@ cat >/etc/tomcat7/tomcat-users.xml <<EOF
 EOF
 
 #export PDI=pdi-ce-5.4.0.1-130
+#unstable link...
 #(cd /tmp && wget -O $PDI.zip 'http://downloads.sourceforge.net/project/pentaho/Data%20Integration/5.4/$PDI.zip?r=http%3A%2F%2Fcommunity.pentaho.com%2Fprojects%2Fdata-integration%2F')
 #(cd /usr/local && mkdir $PDI && cd $PDI  && unzip /tmp/$PDI.zip && ln -s $PDI/data-integration .)
+
+# http://stackoverflow.com/questions/4756039/how-to-change-the-port-of-tomcat-from-8080-to-80
+apt-get install authbind
+touch /etc/authbind/byport/80
+chmod 500 /etc/authbind/byport/80
+chown tomcat7 /etc/authbind/byport/80
+echo AUTHBIND=yes >> /etc/default/tomcat7
