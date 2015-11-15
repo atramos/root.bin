@@ -1,0 +1,39 @@
+apt-get update
+apt-get install -y mysql-client-5.6
+
+PASS=`base64 /dev/urandom -w16 | head -1`
+echo $PASS > ~/readme.password
+
+echo America/Chicago > /etc/timezone
+dpkg-reconfigure -u tzdata
+
+apt-get -y install postfix mailutils install lrzip p7zip
+
+# Oracle Java install
+apt-get -y install python-software-properties
+add-apt-repository ppa:webupd8team/java
+apt-get -y install oracle-java8-installer
+
+export JAVA_HOME=`echo /usr/lib/jvm/*`
+
+apt-get install tomcat7 tomcat7-admin
+perl -lpi -e "s:^#JAVA_HOME=.*:JAVA_HOME=$JAVA_HOME:" /etc/default/tomcat7
+
+cat >/etc/tomcat7/tomcat-users.xml <<EOF
+<?xml version='1.0' encoding='utf-8'?>
+<tomcat-users>
+  <user username="admin" password="$PASS" roles="manager-gui,admin-gui"/>
+</tomcat-users>
+EOF
+
+#export PDI=pdi-ce-5.4.0.1-130
+#unstable link...
+#(cd /tmp && wget -O $PDI.zip 'http://downloads.sourceforge.net/project/pentaho/Data%20Integration/5.4/$PDI.zip?r=http%3A%2F%2Fcommunity.pentaho.com%2Fprojects%2Fdata-integration%2F')
+#(cd /usr/local && mkdir $PDI && cd $PDI  && unzip /tmp/$PDI.zip && ln -s $PDI/data-integration .)
+
+# http://stackoverflow.com/questions/4756039/how-to-change-the-port-of-tomcat-from-8080-to-80
+apt-get install authbind
+touch /etc/authbind/byport/80
+chmod 500 /etc/authbind/byport/80
+chown tomcat7 /etc/authbind/byport/80
+echo AUTHBIND=yes >> /etc/default/tomcat7
