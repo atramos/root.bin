@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# launch an EC2 spot instance to perform a task
+CMD=$(readlink -e $1)
+shift
+TASK="$CMD $@"
+
+ec2_image_name=task-runner
+ec2_bid_price=0.25
+ec2_instance_type=c4.4xlarge
+ec2_duration=60
+ec2_volume_size=8
+
+PATH=/usr/local/bin/:$PATH
+DIR=$(readlink -m $(dirname $0))
+
+SELF=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+IMAGE_ID=$(aws ec2 describe-images --filters Name=tag-key,Values="Name" Name=tag-value,Values=$ec2_image_name --owners self \
+   |jq -r '.Images[0].ImageId')
+
+if [ "$IMAGE_ID" == null ]
+then
+	echo "Creating AMI image."
+	sync
+	IMAGE_ID=$(aws ec2 create-image --instance-id $SELF --no-reboot --name $ec2_image_name | jq -r '.ImageId')
+	while [ ! $(aws ec2 describe-images --image-ids $IMAGE_ID | jq -r '.Images[0].State') = "available" ]
+	do
+	  sleep 3
+	  echo "Waiting for image $IMAGE_ID"
+	done
+	aws ec2 create-tags --resources $IMAGE_ID --tags Key=Name,Value=$ec2_image_name
+else
+	echo "Re-using image with id=$IMAGE_ID"
+fi
+
+REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone | sed -e 's/.$//')
+PUB_KEY=$(wget -q -O - http://169.254.169.254/latest/meta-data/public-keys | awk -F= '{print $2}')
+HOSTNAME=$(hostname)
+
+cat >user-data.tmp <<EOF
+#!/bin/sh
+crontab < /dev/null
+my_id=\$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+aws ec2 create-tags --resources \$my_id --tags Key=Name,Value="${ec2_image_name}-spot"
+echo "$TASK" | at now
+
+EOF
+
+userData=$(base64 user-data.tmp | tr -d '\n');
+
+cheapZone=$(aws ec2 describe-spot-price-history --product-descriptions Linux/UNIX --instance-types $ec2_instance_type --max-items 10|jq -r '.SpotPriceHistory'|jq -r 'sort_by(.SpotPrice)[0].AvailabilityZone')
+
+cat >specs.tmp <<EOF
+{
+  "KeyName" : "$PUB_KEY",
+  "InstanceType": "$ec2_instance_type",
+  "ImageId" : "$IMAGE_ID",
+  "UserData" : "${userData}",
+  "Placement": {
+    "AvailabilityZone": "$cheapZone"
+  },
+  "BlockDeviceMappings": [
+    {
+      "DeviceName" : "/dev/sda1",
+      "Ebs": {
+        "VolumeSize": $ec2_volume_size,
+        "DeleteOnTermination": true,
+        "VolumeType" : "gp2"
+      }
+    }
+  ]
+}
+EOF
+
+SPOT_JSON=$(aws ec2 request-spot-instances --spot-price $ec2_bid_price --type one-time --block-duration-minutes $ec2_duration --launch-specification file://specs.tmp --region ${REGION})
+
+SPOT_ID=$(echo $SPOT_JSON | jq -r '.SpotInstanceRequests[0].SpotInstanceRequestId')
+
+echo SPOT_ID=$SPOT_ID
+
+aws ec2 create-tags --resources ${SPOT_ID} --tags Key=Name,Value=${ec2_image_name} --region ${REGION}
+
+echo $SPOT_JSON > spot.tmp
