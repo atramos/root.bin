@@ -6,10 +6,10 @@ shift
 TASK="$CMD $@"
 
 ec2_image_name=task-runner
-ec2_bid_price=0.25
-ec2_instance_type=c4.4xlarge
-ec2_duration=60
-ec2_volume_size=8
+ec2_bid_price=0.75
+ec2_instance_type=c4.2xlarge
+ec2_duration=60 # minutes
+ec2_volume_size=300 # use 3334 to maximize IOPS
 
 PATH=/usr/local/bin/:$PATH
 DIR=$(readlink -m $(dirname $0))

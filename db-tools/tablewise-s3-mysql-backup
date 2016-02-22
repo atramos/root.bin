@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# backup mysql to AWS S3
+
+TARG=$1
+PATH=/usr/local/bin:$PATH
+
+if [ "$TARG" = "" ]
+then
+	echo "Usage: $0 [target]"
+	exit 1
+fi
+
+$(dirname $0)/mygrants | aws s3 cp - $TARG/grants.sql
+
+for db in $(mysql --skip-column-names -Be 'show databases')
+do
+  if [ $db != "information_schema" ] && [ $db != "mysql" ]
+  then
+	mysqldump -d --skip-triggers $db | aws s3 cp - $TARG/$db.schema.ddl
+	mysqldump -R -d $db | aws s3 cp - $TARG/$db.routines.ddl
+	for table in $(mysql $db --skip-column-names -Be 'show full tables where Table_Type <> "VIEW"' | perl -lpe 's/\t.*//')
+	do
+		mysqldump $db $table | gzip -9 | aws s3 cp - $TARG/$db/$table.sql.gz
+	done
+  fi
+done
+

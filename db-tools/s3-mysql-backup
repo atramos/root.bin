@@ -1,7 +1,10 @@
 #!/bin/sh
 
-# backup mysql to AWS S3
+# single-file backup mysql to AWS S3
 
+service tomcat7 stop # we need the RAM
+
+export HOME=/root
 TARG=$1
 PATH=/usr/local/bin:$PATH
 
@@ -11,20 +14,19 @@ then
 	exit 1
 fi
 
-mysqldump -R $db | gzip -9 | aws s3 cp - $TARG/$db.all-sql.gz &
+echo "Backup started @ $(date)"
 
-$(dirname $0)/mygrants | aws s3 cp - $TARG/grants.sql
+mysqldump -A -R > full-backup.sql
 
-for db in $(mysql --skip-column-names -Be 'show databases')
-do
-  if [ $db != "information_schema" ] && [ $db != "mysql" ]
-  then
-	mysqldump -d --skip-triggers $db | aws s3 cp - $TARG/$db.schema.ddl
-	mysqldump -R -d $db | aws s3 cp - $TARG/$db.routines.ddl
-	for table in $(mysql $db --skip-column-names -Be 'show full tables where Table_Type <> "VIEW"' | perl -lpe 's/\t.*//')
-	do
-		mysqldump $db $table | gzip -9 | aws s3 cp - $TARG/$db/$table.sql.gz
-	done
-  fi
-done
+echo "Compression started @ $(date)"
 
+(lrzip full-backup.sql; echo "lrzip done @ $(date)") &
+(7z a full-backup.sql.7z full-backup.sql; echo "7zip done @ $(date)") &
+
+wait
+
+echo "S3 Copy started @ $(date)"
+
+aws s3 cp full-backup.sql.* $TARG/
+
+echo "Backup ended @ $(date)"
