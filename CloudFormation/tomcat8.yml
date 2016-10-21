@@ -1,0 +1,108 @@
+Parameters:
+
+  KeyName:
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: 'Alex2'
+  InstanceType:
+    AllowedValues:
+    - t2.nano
+    - t2.micro
+    - t2.small
+    - t2.medium
+    - t2.large
+    - m4.large
+    - m4.xlarge
+    - m4.2xlarge
+    - m4.4xlarge
+    - m4.10xlarge
+    - c4.large
+    - c4.xlarge
+    - c4.2xlarge
+    - c4.4xlarge
+    - c4.8xlarge
+    ConstraintDescription: must be a valid EC2 instance type.
+    Default: t2.micro
+    Description: WebServer EC2 instance type
+    Type: String
+  SSHLocation : {
+      "Description" : "The IP address range that can be used to SSH to the EC2 instances",
+      "Type": "String",
+      "MinLength": "9",
+      "MaxLength": "18",
+      "Default": "0.0.0.0/0",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "Must be a valid IP CIDR range of the form x.x.x.x/x"
+  }
+
+Resources: 
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Enable HTTP access via port 80 locked down to the load balancer + SSH access"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: '80'
+        IpProtocol: tcp
+        ToPort: '80'
+      - CidrIp: !Ref SSHLocation
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+        
+        
+  WebServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: 'ami-2ef48339'
+      #!FindInMap [AWSRegionArch2AMI, !Ref 'AWS::Region', !FindInMap [AWSInstanceType2Arch, !Ref InstanceType, Arch]]      
+      #ami-2ef48339 # us-east-1 Ubuntu 16.04 LTS
+      
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      SecurityGroups:
+      - Ref: WebServerSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            # Oracle Java install http://askubuntu.com/questions/190582/installing-java-automatically-with-silent-option
+            apt-get -y install python-software-properties
+            echo '' | add-apt-repository ppa:webupd8team/java
+            apt-get update
+            apt-get -y upgrade
+            echo debconf shared/accepted-oracle-license-v1-1 select true | debconf-set-selections
+            echo debconf shared/accepted-oracle-license-v1-1 seen true | debconf-set-selections
+            apt-get -y install oracle-java8-installer
+            apt-get install oracle-java8-set-default
+            export JAVA_HOME=`echo /usr/lib/jvm/*`
+            (echo ""; echo "JAVA_HOME=$JAVA_HOME") >> /etc/default/rcS
+            apt-get -y install tomcat8 tomcat8-admin            
+            # https://gist.github.com/kixorz/10194688
+            apt-get -y install python-pip
+            pip install pip https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+            # customizations
+            echo America/Chicago > /etc/timezone
+            dpkg-reconfigure -u tzdata                      
+            PASS=`base64 /dev/urandom -w16 | head -1`
+            echo $PASS > ~/readme.password
+            cat >/etc/tomcat8/tomcat-users.xml <<EOF
+            <?xml version='1.0' encoding='utf-8'?>
+            <tomcat-users>
+              <user username="admin" password="$PASS" roles="manager-gui,admin-gui"/>
+            </tomcat-users>
+            EOF
+            # http://stackoverflow.com/questions/4756039/how-to-change-the-port-of-tomcat-from-8080-to-80
+            apt-get install authbind
+            touch /etc/authbind/byport/80
+            chmod 500 /etc/authbind/byport/80
+            chown tomcat8 /etc/authbind/byport/80
+            perl -lpi -e "s:^#AUTHBIND.*:AUTHBIND=yes:" /etc/default/tomcat8
+            perl -lpi -e "s:8080:80:g" /var/lib/tomcat8/conf/server.xml
+            service tomcat8 restart
+            # CloudFormation stuff                        
+            cfn-init -v --stack ${AWS::StackId} --resource WebServer --region ${AWS::Region}
+            cfn-signal -e $? --stack ${AWS::StackId} --resource WebServer --region ${AWS::Region}
