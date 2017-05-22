@@ -24,12 +24,13 @@ dump() {
   TABLE=$2
   COLUMN=$3
   echo "Started: $DATABASE.$TABLE"
+  FILE=$(date -Is).xml.gz
+  mysqldump --xml --max_allowed_packet=256M $DATABASE $TABLE --where "$COLUMN < '$CUTOFF'" | gzip | aws s3 cp - s3://$BUCKET/logs/$DATABASE.$TABLE/$FILE
   while [ $(mysql --column-names=FALSE --batch -e "select count(*) from $DATABASE.$TABLE where $COLUMN < '$CUTOFF'") -gt 0 ]
   do
-	  FILE=$(date -Is).csv.gz
-	  echo $FILE
-	  mysql --max_allowed_packet=128M --batch -e "select * from $DATABASE.$TABLE where $COLUMN < '$CUTOFF' limit 100000" | gzip | aws s3 cp - s3://$BUCKET/logs/$DATABASE.$TABLE/$FILE
-	  mysql -e "delete from $DATABASE.$TABLE where $COLUMN < '$CUTOFF' limit 100000"
+	echo deleting...
+	mysql -e "delete from $DATABASE.$TABLE where $COLUMN < '$CUTOFF' limit 50000"
+	mysql -e "purge binary logs before now()"
   done
   echo "Done   : $DATABASE.$TABLE"
 }
