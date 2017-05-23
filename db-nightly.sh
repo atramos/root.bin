@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOGROT=$(basename $0)/db-tools/logrot.sh
+LOGROT=$(dirname $0)/db-tools/logrot.sh
 
 TARGET="s3://ctcdb.chicagotopcondos.com/mysql-backup/mysql-backup.$(date '+%Y-%m-%d').sql.gz"
 
