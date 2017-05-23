@@ -25,7 +25,7 @@ dump() {
   COLUMN=$3
   echo "Started: $DATABASE.$TABLE"
   FILE=$(date -Is).xml.gz
-  mysqldump --xml --max_allowed_packet=256M $DATABASE $TABLE --where "$COLUMN < '$CUTOFF'" | gzip | aws s3 cp - s3://$BUCKET/logs/$DATABASE.$TABLE/$FILE
+  mysqldump --xml --max_allowed_packet=64M $DATABASE $TABLE --where "$COLUMN < '$CUTOFF'" | gzip | aws s3 cp - s3://$BUCKET/logs/$DATABASE.$TABLE/$FILE
   while [ $(mysql --column-names=FALSE --batch -e "select count(*) from $DATABASE.$TABLE where $COLUMN < '$CUTOFF'") -gt 0 ]
   do
 	echo deleting...
