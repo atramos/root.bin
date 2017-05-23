@@ -29,7 +29,7 @@ dump() {
   while [ $(mysql --column-names=FALSE --batch -e "select count(*) from $DATABASE.$TABLE where $COLUMN < '$CUTOFF'") -gt 0 ]
   do
 	echo deleting...
-	mysql -e "delete from $DATABASE.$TABLE where $COLUMN < '$CUTOFF' limit 50000"
+	mysql -e "delete from $DATABASE.$TABLE where $COLUMN < '$CUTOFF' limit 500000"
 	mysql -e "purge binary logs before now()"
   done
   echo "Done   : $DATABASE.$TABLE"
@@ -39,4 +39,6 @@ dump logs log_application dbTimeStamp
 dump logs log_access ts
 dump ctcweb log_propertydetail date
 dump ctcweb log_searchcriteria date
+dump ctcweb log_mail created
+
 
