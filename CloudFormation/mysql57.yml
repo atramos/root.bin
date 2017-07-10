@@ -1,0 +1,278 @@
+Parameters:
+
+  KeyName:
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: 'Alex2'
+  InstanceType:
+    AllowedValues:
+    - t2.nano
+    - t2.micro
+    - t2.small
+    - t2.medium
+    - t2.large
+    - m4.large
+    - m4.xlarge
+    - m4.2xlarge
+    - m4.4xlarge
+    - m4.10xlarge
+    - c4.large
+    - c4.xlarge
+    - c4.2xlarge
+    - c4.4xlarge
+    - c4.8xlarge
+    ConstraintDescription: must be a valid EC2 instance type.
+    Default: t2.micro
+    Description: EC2 instance type
+    Type: String
+  SSHLocation : {
+      "Description" : "The IP address range that can be used to SSH to the EC2 instances",
+      "Type": "String",
+      "MinLength": "9",
+      "MaxLength": "18",
+      "Default": "0.0.0.0/0",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "Must be a valid IP CIDR range of the form x.x.x.x/x"
+  }
+
+Resources: 
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "mysql+ssh lockdown"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: '3306'
+        IpProtocol: tcp
+        ToPort: '3306'
+      - CidrIp: !Ref SSHLocation
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+        
+  DataVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 20
+      VolumeType: gp2
+      AvailabilityZone: !GetAtt DatabaseServer.AvailabilityZone
+  
+  DataAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref DatabaseServer
+      VolumeId: !Ref DataVolume
+      Device: /dev/sdh
+      
+  LogVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 2
+      VolumeType: gp2
+      AvailabilityZone: !GetAtt DatabaseServer.AvailabilityZone
+  
+  LogAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref DatabaseServer
+      VolumeId: !Ref LogVolume
+      Device: /dev/sdi
+      
+  SwapVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 2
+      VolumeType: gp2
+      AvailabilityZone: !GetAtt DatabaseServer.AvailabilityZone
+  
+  SwapAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref DatabaseServer
+      VolumeId: !Ref SwapVolume
+      Device: /dev/sdj
+  
+  DatabaseRole: 
+    Type: "AWS::IAM::Role"
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "ec2.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies: 
+        - 
+          PolicyName: "MakeBackup"
+          PolicyDocument: 
+            Version: "2012-10-17"
+            Statement: 
+              - 
+                Effect: "Allow"
+                Action: "s3:PutObject"
+                Resource: "arn:aws:s3:::ctc.web/*"
+
+  DatabaseProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - 
+          Ref: "DatabaseRole"
+          
+  DatabaseServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: 'ami-1de2b978'
+      #ami-2ef48339 # us-east-1 Ubuntu 16.04 LTS
+      #ami-1de2b978 # us-east-2 Ubuntu 16.04 LTS
+      IamInstanceProfile:
+        Ref: DatabaseProfile
+      InstanceType:
+        Ref: InstanceType
+      KeyName:
+        Ref: KeyName
+      SecurityGroups:
+      - Ref: DatabaseSecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+            apt-get update
+            apt-get -y upgrade
+            
+            # fdisk takes some time to "sync", so do it early, but not too soon (devices take a while to attach, too).
+            fdisk /dev/xvdh <<EOF
+            g
+            n
+            
+            
+            
+            w
+            EOF
+            fdisk /dev/xvdi <<EOF
+            g
+            n
+            
+            
+            
+            w
+            EOF
+            fdisk /dev/xvdj <<EOF
+            g
+            n
+            
+            
+            
+            w
+            EOF
+            echo '0 0 * * * /usr/sbin/ntpdate -s time.nist.gov' | crontab
+            # Use UTC/GMT time on database server, for better compatibility with RDS.
+            echo Universal > /etc/timezone
+            dpkg-reconfigure -u tzdata
+            PASS=`base64 /dev/urandom -w20 | head -1`
+            cat > ~/.my.cnf <<EOF
+            [client]
+            password = $PASS
+            host = 127.0.0.1
+            EOF
+            # mysql install
+            debconf-set-selections <<< "mysql-server-5.7 mysql-server/root_password password $PASS"
+            debconf-set-selections <<< "mysql-server-5.7 mysql-server/root_password_again password $PASS"
+            apt-get -y install mysql-server-5.7 mysql-client-5.7
+            
+            cat >/etc/mysql/mysql.conf.d/mysqld.cnf <<EOF
+            [mysqld_safe]
+            socket          = /var/run/mysqld/mysqld.sock
+            nice            = 0
+            [mysqld]
+            user            = mysql
+            pid-file        = /var/run/mysqld/mysqld.pid
+            socket          = /var/run/mysqld/mysqld.sock
+            port            = 3306
+            basedir         = /usr
+            datadir         = /var/lib/mysql
+            tmpdir          = /tmp
+            lc-messages-dir = /usr/share/mysql
+            skip-external-locking
+            bind-address            = 0.0.0.0
+            key_buffer_size         = 32M
+            thread_stack            = 192K
+            thread_cache_size       = 8
+            myisam-recover-options  = BACKUP
+            query_cache_limit       = 1M
+            query_cache_size        = 16M
+            log_error = /var/log/mysql/error.log
+            expire_logs_days        = 2
+            max_binlog_size         = 100M
+            log_bin_trust_function_creators=1
+            innodb_file_format=Barracuda
+            collation-server = utf8_unicode_ci
+            init-connect='SET NAMES utf8'
+            character-set-server = utf8
+            sql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES
+            server-id               = 1
+            log_bin                 = /var/log/mysql/mysql-bin.log
+            max_allowed_packet      = 32M
+            innodb_buffer_pool_size = 128M
+            innodb_flush_log_at_trx_commit = 1
+            sync_binlog = 1
+            EOF
+            # activate swap
+            mkswap /dev/xvdj1
+            swapon /dev/xvdj1
+            echo /dev/xvdj1 none swap sw 0 0 >> /etc/fstab
+            swapon -a
+            
+            # move mysql data dir to 2nd mount
+            service mysql stop
+            mkfs /dev/xvdh1
+            tar -zcf /tmp/mysql.tgz /var/lib/mysql
+            rm -rf /var/lib/mysql/*
+            mount /dev/xvdh1 /var/lib/mysql
+            rm -rf /var/lib/mysql/*
+            chown mysql:mysql /var/lib/mysql
+            (cd / && tar -xf /tmp/mysql.tgz && rm /tmp/mysql.tgz)
+            egrep ^/dev/xvdh1 /etc/mtab >> /etc/fstab
+            # move /var/log/mysql
+            mkfs /dev/xvdi1
+            rm -rf /var/log/mysql/*
+            mount /dev/xvdi1 /var/log/mysql
+            rm -rf /var/log/mysql/*
+            chown mysql:mysql /var/log/mysql
+            egrep ^/dev/xvdi1 /etc/mtab >> /etc/fstab
+            
+            service mysql start
+            
+            #convenience settings
+            cat >/home/ubuntu/.bashrc <<EOF
+            case $- in
+                *i*) ;;
+                *) return;;
+            esac
+            exec sudo su -
+            EOF
+            git clone http://github.com/atramos/root.bin /root/bin
+            git config --global push.default simple
+            apt-get purge nano
+            
+            # install AWS tooling
+            apt-get -y install awscli jq
+            
+            cat >/etc/rc.local <<EOF
+            #!/bin/sh -e
+            apt-get -y upgrade
+            # CloudFormation stuff                        
+            cfn-init -v --stack ${AWS::StackId} --resource DatabaseServer --region ${AWS::Region}
+            cfn-signal -e $? --stack ${AWS::StackId} --resource DatabaseServer --region ${AWS::Region}
+            # run only once
+            echo '#!/bin/true' > /etc/rc.local
+            EOF
+            reboot

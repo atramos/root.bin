@@ -1,0 +1,26 @@
+#!/bin/bash
+
+MetaCall="curl -s http://169.254.169.254/latest/meta-data"
+
+SELF_ID=$($MetaCall/instance-id)
+INSTANCE_TYPE=$($MetaCall/instance-type)
+SECGRP_NAME=$($MetaCall/security-groups/)
+SECGRP_ID=$(aws ec2 describe-security-groups --group-names $SECGRP_NAME | jq -r '.SecurityGroups[0].GroupId')
+SUBNET_ID=$($MetaCall/network/interfaces/macs/$($MetaCall/mac)/subnet-id)
+NAME="$(hostname -s)_$(date +%Y%m%d)"
+
+echo "Creating AMI image."
+sync
+IMAGE_ID=$(aws ec2 create-image --instance-id $SELF_ID --no-reboot --name $NAME | jq -r '.ImageId')
+
+echo "imageId: $IMAGE_ID"
+while [ ! $(aws ec2 describe-images --image-ids $IMAGE_ID | jq -r '.Images[0].State') = "available" ]
+do
+  sleep 5
+  echo "Waiting for image $IMAGE_ID"
+done
+
+# tag the image's snapshot
+SNAPSHOT_ID=$(aws ec2 describe-images --image-id $IMAGE_ID |jq -r '.Images[0].BlockDeviceMappings[0].Ebs.SnapshotId')
+aws ec2 create-tags --resources $IMAGE_ID $SNAPSHOT_ID --tags Key=Name,Value=$NAME
+
